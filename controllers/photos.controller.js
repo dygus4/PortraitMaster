@@ -1,5 +1,6 @@
 const Photo = require('../models/photo.model');
-
+const Voter = require('../models/Voter.model.js');
+const requestIp = require('request-ip');
 /****** SUBMIT PHOTO ********/
 
 exports.add = async (req, res) => {
@@ -7,9 +8,28 @@ exports.add = async (req, res) => {
   try {
     const { title, author, email } = req.fields;
     const file = req.files.file;
+
+    const titlePattern = new RegExp(/(<\s*(strong|em)*>(([A-z]|\s)*)<\s*\/\s*(strong|em)>)|(([A-z]|\s|\.)*)/, 'g');
+    const titleMatched = text.match(titlePattern).join('');
+
+    const authorPattern = new RegExp(/(<\s*(strong|em)*>(([A-z]|\s)*)<\s*\/\s*(strong|em)>)|(([A-z]|\s|\.)*)/, 'g');
+    const authorMatched = text.match(authorPattern).join('');
+
+    const emailPattern = new RegExp(/(<\s*(strong|em)*>(([A-z]|\s)*)<\s*\/\s*(strong|em)>)|(([A-z]|\s|\.)*)/, 'g');
+    const emailMatched = text.match(emailPattern).join('');
+
     const inputExtension = file.name.split('.').slice(-1);
 
-    if(title && author && email && file && (inputExtension ==='jpg' || 'png' || 'gif')) { // if fields are not empty...
+    if(
+      title &&
+      author && 
+      email && 
+      file && 
+      (inputExtension ==='jpg' || 'png' || 'gif') && 
+      titleMatched.length === title.length && 
+      authorMatched.length === author.length &&
+      emailMatched.length === email.length
+      ) { // if fields are not empty...
 
       const fileName = file.path.split('/').slice(-1)[0]; // cut only filename from full path, e.g. C:/test/abc.jpg -> abc.jpg
       const newPhoto = new Photo({ title, author, email, src: fileName, votes: 0 });
@@ -43,9 +63,25 @@ exports.loadAll = async (req, res) => {
 exports.vote = async (req, res) => {
 
   try {
+
     const photoToUpdate = await Photo.findOne({ _id: req.params.id });
+    const clientIp = requestIp.getClientIp(req);
+    const voter = await Voter.findOne({user: clientIp})
+
     if(!photoToUpdate) res.status(404).json({ message: 'Not found' });
     else {
+      if(!voter) {
+        const newVoter = new Voter({user: clientIp, votes: photoToUpdate._id })
+        await newVoter.save();
+      } else {
+
+        if(voter.votes.includes(req.params.id)) {
+          throw new Error ('You already voted on this picture');
+        } else {
+          voter.votes.push(photoToUpdate._id);
+          await voter.save();
+        }
+      }
       photoToUpdate.votes++;
       photoToUpdate.save();
       res.send({ message: 'OK' });
